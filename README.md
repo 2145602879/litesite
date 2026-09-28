@@ -1,8 +1,47 @@
+<div align="center">
+  <img src="docs/images/banner.svg" alt="litesite — 轻量个人主页 + 独立管理后台">
+</div>
+
 # litesite · 轻量个人主页 + 独立管理后台
 
 一套刻意做「减法」的个人主页系统，目标只有一个：**在 2 核 1G 的 VPS 上长期稳定运行，不被 OOM Killer 杀掉。**
 
-实测常驻内存：**生产模式 64 MB 左右**（`NODE_ENV=production`，静态文件交给 Nginx）。堆内存仅 10 MB 上下，说明大量内存消耗在 Node 运行时本身，而不是业务代码。
+实测常驻内存：**生产模式 64 ~ 71 MB**（`NODE_ENV=production`，静态文件交给 Nginx）。其中堆内存仅 9 ~ 11 MB，说明大部分内存消耗在 Node 运行时本身，而不是业务代码。
+
+<div align="center">
+
+![Node](https://img.shields.io/badge/Node-22_LTS-3C873A?style=flat-square&logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-4.x-1B1B1B?style=flat-square&logo=express&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-single_file-044A64?style=flat-square&logo=sqlite&logoColor=white)
+![deps](https://img.shields.io/badge/deps-5-2E7D32?style=flat-square)
+![RSS](https://img.shields.io/badge/RSS-~70MB-E25814?style=flat-square)
+![PM2](https://img.shields.io/badge/PM2-memory_capped-2B037A?style=flat-square&logo=pm2&logoColor=white)
+
+[部署文档](docs/DEPLOY.md) · [运维手册](docs/OPS.md) · [Nginx 配置](deploy/nginx.conf) · [PM2 配置](ecosystem.config.js) · [环境变量模板](.env.example)
+
+</div>
+
+---
+
+## 亮点
+
+- **只有 5 个生产依赖**：`express` `better-sqlite3` `bcryptjs` `multer` `dotenv`。没有 ORM、没有 session 中间件、没有模板引擎、没有构建工具
+- **常驻内存约 70 MB**：堆只占 9 ~ 11 MB，其余是 Node 运行时本身，几乎没有优化空间可浪费
+- **三道内存护栏**：V8 堆上限 96 MB + PM2 超 150 MB 自动重启 + 静态资源完全绕开 Node
+- **零构建前端**：Tailwind CDN + 原生 JS，改完刷新即生效，没有打包步骤与产物
+- **单文件数据库**：SQLite 免去独立进程，个人站的数据量用不上连接池与并发事务
+- **自写签名 Cookie 会话**：服务端零存储，改一个密码就能踢掉全部旧会话
+- **完整交付**：从零部署文档、运维排错手册、幂等部署脚本、48 项端到端自测
+
+---
+
+## 请求路径
+
+<div align="center">
+  <img src="docs/images/architecture.svg" alt="请求路径：Nginx 直出静态资源，Node 只处理 API">
+</div>
+
+静态资源由 Nginx 直接读磁盘返回，Node 只处理 `/api/*` 请求，这是常驻内存能压在 70 MB 的关键。
 
 ---
 

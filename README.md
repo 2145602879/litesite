@@ -45,6 +45,22 @@
 
 ---
 
+## 界面预览
+
+访客端首页（深色模式，1440 × 900 实拍）：
+
+<div align="center">
+  <img src="docs/images/screenshot-home.png" alt="访客端首页：头像与简介、技能标签、作品集、文章列表">
+</div>
+
+管理后台登录页（`/admin`）：
+
+<div align="center">
+  <img src="docs/images/screenshot-admin.png" alt="管理后台登录页" width="420">
+</div>
+
+---
+
 ## 一、技术选型与内存账本
 
 | 层 | 选型 | 为什么不用常见的替代品 |

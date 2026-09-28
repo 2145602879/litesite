@@ -568,22 +568,104 @@ curl -sI https://你的域名/data/litesite.db | head -n 1
 
 ## 14. 更新部署（以后每次改代码）
 
+线上代码通过 Git 拉取。**不要直接在服务器上改源码**，否则下次拉取会冲突。
+
+### 14.1 一次性配置（部署时做一遍）
+
+在服务器上生成只读部署密钥：
+
 ```bash
-cd /var/www/litesite
-
-# 1. 拉取或上传新代码（保留 .env 与 data/ 目录）
-
-# 2. 如果依赖有变化
-npm ci --omit=dev --no-audit --no-fund
-
-# 3. 平滑重载（先起新进程再停旧进程，几乎零停机）
-pm2 reload litesite --update-env
-
-# 4. 如果静态资源改过，Nginx 无需操作；但浏览器缓存较久
-#    可以在 index.html 的引用上手动加版本号，例如 /css/app.css?v=2
-
-pm2 status
+sudo -i
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+ssh-keygen -t ed25519 -C "litesite-server" -f /root/.ssh/deploy_litesite -N ""
+cat /root/.ssh/deploy_litesite.pub
 ```
 
-数据库结构如果有新增字段，本项目采用 `CREATE TABLE IF NOT EXISTS` 的幂等建表方式，
-新增表会自动创建；新增列请自行执行 `ALTER TABLE`（先 `pm2 stop`，备份 `data/litesite.db` 再操作）。
+把打印出的公钥整行加到仓库 **Settings → Deploy keys**（**不要勾选 Allow write access**），然后：
+
+```bash
+cat >> /root/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile /root/.ssh/deploy_litesite
+  IdentitiesOnly yes
+EOF
+chmod 600 /root/.ssh/config
+
+ssh -T git@github.com          # 出现 Hi <用户名>/<仓库名>! 即成功
+
+cd /var/www/litesite
+git init -b main
+git remote add origin git@github.com:<你的用户名>/litesite.git
+git fetch origin
+git reset --hard origin/main
+git branch --set-upstream-to=origin/main main
+```
+
+`git reset --hard` 只覆盖被 Git 跟踪的文件；`.env`、`data/`、`node_modules/`、`public/uploads/` 都在 `.gitignore` 里，不受影响。
+
+### 14.2 更新脚本
+
+```bash
+cat > /root/update.sh <<'EOF'
+#!/bin/bash
+set -e
+cd /var/www/litesite
+cp data/litesite.db /root/litesite-backup-$(date +%F_%H%M).db 2>/dev/null || true
+git pull
+npm ci --omit=dev --no-audit --no-fund
+pm2 reload litesite --update-env
+pm2 status
+curl -s http://127.0.0.1:3000/api/health; echo
+EOF
+chmod +x /root/update.sh
+```
+
+以后本地 `git push`，服务器执行 `/root/update.sh` 即可。
+
+> 本地推送如果卡在连接 github.com，说明本机没走代理：
+> `git config http.proxy http://127.0.0.1:7897`（端口按你自己的代理改），推送时保持代理开启。
+
+### 14.3 重启范围对照
+
+| 改动位置 | 需要做什么 |
+| --- | --- |
+| `public/` 下的 HTML | 不用重启，Nginx 直接读磁盘 |
+| `public/` 下的 CSS / JS | 不用重启，但要在 HTML 引用处加版本号（`/js/app.js?v=2`），否则老访客 30 天缓存内拿到旧文件 |
+| `src/**`、`server.js` | `pm2 reload litesite` |
+| `.env` | `pm2 reload litesite --update-env` |
+| `package.json`（新增依赖） | `npm ci --omit=dev` 后 `pm2 reload litesite` |
+| `ecosystem.config.js` | `pm2 delete litesite && pm2 start ecosystem.config.js && pm2 save` |
+| `deploy/nginx.conf` | 手动同步到 `/etc/nginx/sites-available/litesite`（把 `example.com` 换成你的域名）→ `nginx -t && systemctl reload nginx` |
+| `src/db.js` 表结构 | 新增表会自动创建；**新增列不会**，需手动 `ALTER TABLE`，先备份 `data/litesite.db` |
+
+### 14.4 数据库结构变更
+
+`src/db.js` 用 `CREATE TABLE IF NOT EXISTS`，新增表会自动创建，新增列不会：
+
+```bash
+cp /var/www/litesite/data/litesite.db /root/db-backup-$(date +%F).db
+sqlite3 /var/www/litesite/data/litesite.db "ALTER TABLE projects ADD COLUMN demo_url TEXT DEFAULT '';"
+pm2 reload litesite
+```
+
+### 14.5 回滚
+
+```bash
+cd /var/www/litesite
+git log --oneline -10
+git reset --hard <上一个提交的哈希>
+pm2 reload litesite
+```
+
+> **关于重启时的空窗**：`pm2 reload` 在 fork 单进程模式下是「先停后起」，约有 1 秒窗口。
+> 由于站点配置里有 `error_page 500 502 503 504 /404.html;`，这一瞬的请求会看到 404 页，属于预期行为。
+> 想让接口在这段时间返回明确的 503 JSON，在 `/etc/nginx/sites-available/litesite` 里加：
+>
+> ```nginx
+> location @api_restarting {
+>     default_type application/json;
+>     return 503 '{"ok":false,"error":"服务正在重启，请稍后重试"}';
+> }
+> ```
+>
+> 并在 `location /api/ {` 内首行写 `error_page 500 502 503 504 = @api_restarting;`，然后 `nginx -t && systemctl reload nginx`。

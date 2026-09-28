@@ -215,7 +215,108 @@ BASE_URL=http://127.0.0.1:3210 npm run test:api
 
 ---
 
-## 六、API 速查
+## 六、更新线上站点（Git 工作流）
+
+线上代码一律通过 Git 拉取。**不要在服务器上直接改源码**，否则下次拉取会冲突。
+
+### 一次性配置（部署时做一遍）
+
+```bash
+# 服务器上生成只读部署密钥
+sudo -i
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+ssh-keygen -t ed25519 -C "litesite-server" -f /root/.ssh/deploy_litesite -N ""
+cat /root/.ssh/deploy_litesite.pub
+```
+
+把打印出的公钥整行加到仓库 **Settings → Deploy keys**（**不要勾选 Allow write access**），然后：
+
+```bash
+cat >> /root/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile /root/.ssh/deploy_litesite
+  IdentitiesOnly yes
+EOF
+chmod 600 /root/.ssh/config
+
+cd /var/www/litesite
+git init -b main
+git remote add origin git@github.com:<你的用户名>/litesite.git
+git fetch origin
+git reset --hard origin/main
+git branch --set-upstream-to=origin/main main
+```
+
+`git reset --hard` 只覆盖被 Git 跟踪的文件；`.env`、`data/`、`node_modules/`、`public/uploads/` 都在 `.gitignore` 里，不受影响。
+
+### 装一次更新脚本
+
+```bash
+cat > /root/update.sh <<'EOF'
+#!/bin/bash
+set -e
+cd /var/www/litesite
+cp data/litesite.db /root/litesite-backup-$(date +%F_%H%M).db 2>/dev/null || true
+git pull
+npm ci --omit=dev --no-audit --no-fund
+pm2 reload litesite --update-env
+pm2 status
+curl -s http://127.0.0.1:3000/api/health; echo
+EOF
+chmod +x /root/update.sh
+```
+
+### 日常流程
+
+本地（若本机访问 `github.com:443` 超时，先 `git config http.proxy http://127.0.0.1:7897`，推送时保持代理开启）：
+
+```bash
+git add -A
+git commit -m "说明这次改了什么"
+git push
+```
+
+服务器：
+
+```bash
+/root/update.sh
+```
+
+### 改完什么需要重启
+
+| 改动位置 | 需要做什么 |
+| --- | --- |
+| `public/` 下的 HTML | 不用重启，Nginx 直接读磁盘 |
+| `public/` 下的 CSS / JS | 不用重启，但要在 HTML 引用处加版本号（`/js/app.js?v=2`），否则老访客 30 天缓存内拿到旧文件 |
+| `src/**`、`server.js` | `pm2 reload litesite` |
+| `.env` | `pm2 reload litesite --update-env` |
+| `package.json`（新增依赖） | `npm ci --omit=dev` 后 `pm2 reload litesite` |
+| `ecosystem.config.js` | `pm2 delete litesite && pm2 start ecosystem.config.js && pm2 save` |
+| `deploy/nginx.conf` | 手动同步到 `/etc/nginx/sites-available/litesite`（记得把 `example.com` 换成你的域名），再 `nginx -t && systemctl reload nginx`。`update.sh` 不会自动应用 Nginx 配置 |
+| `src/db.js` 的表结构 | **不会自动迁移**，见下 |
+
+### 改数据库表结构
+
+`src/db.js` 用 `CREATE TABLE IF NOT EXISTS`，新增表会自动创建，**新增列不会**，需要手动执行：
+
+```bash
+cp /var/www/litesite/data/litesite.db /root/db-backup-$(date +%F).db
+sqlite3 /var/www/litesite/data/litesite.db "ALTER TABLE projects ADD COLUMN demo_url TEXT DEFAULT '';"
+pm2 reload litesite
+```
+
+### 回滚到上一个版本
+
+```bash
+cd /var/www/litesite
+git log --oneline -10
+git reset --hard <某个提交的哈希>
+pm2 reload litesite
+```
+
+---
+
+## 七、API 速查
 
 | 方法 | 路径 | 说明 | 鉴权 |
 | --- | --- | --- | --- |
@@ -241,7 +342,7 @@ BASE_URL=http://127.0.0.1:3210 npm run test:api
 
 ---
 
-## 七、设计说明（为什么长这样）
+## 八、设计说明（为什么长这样）
 
 - **颜色**：一套中性灰底 + 单一强调色（赭橙）。深浅两套主题共用同一组 RGB 变量，改主题只需要改一段变量；强调色只用于图形、下划线、悬停态，正文与按钮保持高对比的墨色，保证 WCAG AA。
 - **形状**：全站统一圆角体系，卡片 16~20px，控件一律药丸形。

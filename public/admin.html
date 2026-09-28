@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="color-scheme" content="light dark" />
+<meta name="robots" content="noindex, nofollow" />
+<title>管理后台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2316161A'/%3E%3Cpath d='M10 22h12M10 16h12M10 10h7' stroke='%23F26B21' stroke-width='2.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+<!-- 与前台完全相同的主题变量，保证两套界面视觉统一 -->
+<style>
+  :root {
+    --c-bg: 245 245 243;
+    --c-elev: 255 255 255;
+    --c-fg: 22 22 26;
+    --c-muted: 108 108 116;
+    --c-line: 22 22 26;
+    --c-accent: 226 88 20;
+    --c-accent2: 202 138 12;
+    color-scheme: light;
+  }
+  html.dark {
+    --c-bg: 14 14 17;
+    --c-elev: 22 22 27;
+    --c-fg: 237 237 234;
+    --c-muted: 152 152 160;
+    --c-line: 255 255 255;
+    --c-accent: 242 118 46;
+    --c-accent2: 233 176 58;
+    color-scheme: dark;
+  }
+  html { background-color: rgb(var(--c-bg)); }
+  body {
+    margin: 0;
+    background-color: rgb(var(--c-bg));
+    color: rgb(var(--c-fg));
+    font-family: "Outfit", ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  html.theme-anim, html.theme-anim body { transition: background-color .35s ease, color .35s ease; }
+</style>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (saved ? saved === 'dark' : prefersDark) document.documentElement.classList.add('dark');
+    } catch (e) {}
+  })();
+</script>
+
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          bg: 'rgb(var(--c-bg) / <alpha-value>)',
+          elev: 'rgb(var(--c-elev) / <alpha-value>)',
+          fg: 'rgb(var(--c-fg) / <alpha-value>)',
+          muted: 'rgb(var(--c-muted) / <alpha-value>)',
+          line: 'rgb(var(--c-line) / <alpha-value>)',
+          accent: 'rgb(var(--c-accent) / <alpha-value>)',
+          accent2: 'rgb(var(--c-accent2) / <alpha-value>)'
+        },
+        fontFamily: {
+          display: ['"Space Grotesk"', 'Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          sans: ['Outfit', 'ui-sans-serif', 'system-ui', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+          mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
+        },
+        borderRadius: { card: '20px' },
+        maxWidth: { shell: '1180px' }
+      }
+    }
+  };
+</script>
+
+<!-- 复用前台的表单/按钮/骨架样式，后台只额外补几个管理界面专用的类 -->
+<link rel="stylesheet" href="/css/app.css" />
+<style>
+  /* 后台专用：极简表格、侧边导航、Markdown 分栏编辑器 */
+  .side-link {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.6rem 0.85rem; border-radius: 10px;
+    font-size: 14.5px; color: rgb(var(--c-muted));
+    transition: background-color .18s ease, color .18s ease; cursor: pointer;
+  }
+  .side-link:hover { background-color: rgb(var(--c-fg) / .05); color: rgb(var(--c-fg)); }
+  .side-link.active { background-color: rgb(var(--c-fg) / .08); color: rgb(var(--c-fg)); font-weight: 500; }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+  .data-table th {
+    text-align: left; font-weight: 500; font-size: 12px; letter-spacing: .1em;
+    text-transform: uppercase; color: rgb(var(--c-muted));
+    padding: 0.6rem 0.75rem; border-bottom: 1px solid rgb(var(--c-line) / .12); white-space: nowrap;
+  }
+  .data-table td {
+    padding: 0.85rem 0.75rem; border-bottom: 1px solid rgb(var(--c-line) / .08); vertical-align: top;
+  }
+  .data-table tr:hover td { background-color: rgb(var(--c-fg) / .02); }
+
+  .mini-btn {
+    display: inline-flex; align-items: center; height: 30px; padding: 0 0.7rem;
+    border-radius: 999px; border: 1px solid rgb(var(--c-line) / .16);
+    font-size: 12.5px; color: rgb(var(--c-muted)); white-space: nowrap;
+    transition: color .18s ease, border-color .18s ease, background-color .18s ease;
+  }
+  .mini-btn:hover { color: rgb(var(--c-fg)); border-color: rgb(var(--c-line) / .3); }
+  .mini-btn.active {
+    color: rgb(var(--c-bg)); background-color: rgb(var(--c-fg));
+    border-color: rgb(var(--c-fg));
+  }
+  .mini-btn.danger:hover { color: #d0453b; border-color: #d0453b; }
+
+  /* Markdown 分栏：左编辑右预览，窄屏自动上下堆叠 */
+  .md-split { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+  @media (min-width: 1024px) { .md-split { grid-template-columns: 1fr 1fr; } }
+  .md-editor {
+    min-height: 420px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13.5px; line-height: 1.7; resize: vertical;
+  }
+  .md-preview {
+    min-height: 420px; max-height: 70vh; overflow-y: auto;
+    border: 1px solid rgb(var(--c-line) / .12); border-radius: 12px;
+    padding: 1rem 1.15rem; background-color: rgb(var(--c-bg));
+  }
+
+  /* 简易 toast：固定在右下角，自动消失 */
+  #toast {
+    position: fixed; right: 1rem; bottom: 1rem; z-index: 60;
+    display: flex; flex-direction: column; gap: .5rem; pointer-events: none;
+  }
+  .toast-item {
+    padding: .7rem 1rem; border-radius: 12px; font-size: 14px;
+    background-color: rgb(var(--c-fg)); color: rgb(var(--c-bg));
+    box-shadow: 0 12px 30px -12px rgb(0 0 0 / .4);
+    animation: toastIn .25s cubic-bezier(.16,.84,.44,1) both;
+  }
+  .toast-item.err { background-color: #b93b32; color: #fff; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* 登录态未确认前先藏住主界面，避免闪一下再跳登录 */
+  .booting { visibility: hidden; }
+</style>
+</head>
+
+<body class="bg-bg text-fg font-sans">
+
+<div id="toast" aria-live="polite"></div>
+
+<!-- ============================ 登录视图 ============================ -->
+<section id="loginView" class="booting grid min-h-[100dvh] place-items-center px-5">
+  <div class="w-full max-w-[400px]">
+    <div class="mb-8 flex items-center gap-2.5">
+      <span class="grid h-9 w-9 place-items-center rounded-[10px] bg-fg text-bg">
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 17L12 7L18 17" />
+        </svg>
+      </span>
+      <span class="font-display text-[16px] font-semibold tracking-tight">管理后台</span>
+    </div>
+
+    <h1 class="font-display text-[30px] font-semibold leading-tight tracking-tight">登录</h1>
+    <p class="mt-2 text-[14.5px] text-muted">连续输错会被暂时封禁，请确认密码无误再试。</p>
+
+    <form id="loginForm" class="mt-8 space-y-5" novalidate>
+      <div class="flex flex-col gap-2">
+        <label for="loginUser" class="text-[13px] font-medium">账号</label>
+        <input id="loginUser" name="username" type="text" class="field" autocomplete="username" required />
+      </div>
+      <div class="flex flex-col gap-2">
+        <label for="loginPass" class="text-[13px] font-medium">密码</label>
+        <input id="loginPass" name="password" type="password" class="field" autocomplete="current-password" required />
+      </div>
+      <p id="loginHint" class="min-h-[18px] text-[13px] text-muted" role="status" aria-live="polite"></p>
+      <button id="loginBtn" type="submit" class="btn-primary w-full">登录</button>
+    </form>
+    <p class="mt-6 text-[13px] text-muted">忘记密码？在服务器上执行 <code class="font-mono">npm run reset-password</code></p>
+  </div>
+</section>
+
+<!-- ============================ 主界面 ============================ -->
+<div id="appView" class="booting min-h-[100dvh]">
+  <!-- 顶栏 -->
+  <header class="sticky top-0 z-30 border-b border-line/10 bg-bg/85 backdrop-blur-md">
+    <div class="mx-auto flex h-16 max-w-[1400px] items-center gap-4 px-4 sm:px-6">
+      <span class="grid h-8 w-8 place-items-center rounded-[10px] bg-fg text-bg">
+        <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 17L12 7L18 17" />
+        </svg>
+      </span>
+      <span class="font-display text-[15px] font-semibold tracking-tight">管理后台</span>
+      <span id="memBadge" class="hidden font-mono text-[12px] text-muted sm:inline"></span>
+
+      <div class="ml-auto flex items-center gap-2">
+        <a href="/" target="_blank" rel="noopener" class="mini-btn">查看前台</a>
+        <button id="themeBtn" type="button" class="icon-btn" aria-label="切换主题" title="切换主题">
+          <svg class="h-[18px] w-[18px] dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" /><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4" />
+          </svg>
+          <svg class="hidden h-[18px] w-[18px] dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z" />
+          </svg>
+        </button>
+        <button id="logoutBtn" type="button" class="mini-btn">退出</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="mx-auto flex max-w-[1400px] gap-8 px-4 py-8 sm:px-6">
+    <!-- 侧边导航 -->
+    <nav class="hidden w-[190px] shrink-0 lg:block" aria-label="后台导航">
+      <ul class="sticky top-24 space-y-1" id="sideNav">
+        <li><button class="side-link active w-full text-left" data-view="overview">概览</button></li>
+        <li><button class="side-link w-full text-left" data-view="profile">主页信息</button></li>
+        <li><button class="side-link w-full text-left" data-view="projects">作品集</button></li>
+        <li><button class="side-link w-full text-left" data-view="posts">博客文章</button></li>
+        <li><button class="side-link w-full text-left" data-view="messages">访客留言</button></li>
+        <li><button class="side-link w-full text-left" data-view="security">安全设置</button></li>
+      </ul>
+      <p class="mt-6 text-[12.5px] leading-relaxed text-muted">
+        提示：图片建议先压缩到 300KB 以内再上传，<br />能显著降低带宽与内存压力。
+      </p>
+    </nav>
+
+    <!-- 移动端标签栏 -->
+    <div class="min-w-0 flex-1">
+      <div class="mb-6 flex gap-1 overflow-x-auto pb-1 lg:hidden" id="tabNav">
+        <button class="mini-btn shrink-0" data-view="overview">概览</button>
+        <button class="mini-btn shrink-0" data-view="profile">主页信息</button>
+        <button class="mini-btn shrink-0" data-view="projects">作品集</button>
+        <button class="mini-btn shrink-0" data-view="posts">博客</button>
+        <button class="mini-btn shrink-0" data-view="messages">留言</button>
+        <button class="mini-btn shrink-0" data-view="security">安全</button>
+      </div>
+
+      <!-- ---------- 概览 ---------- -->
+      <section data-panel="overview" class="space-y-6">
+        <h1 class="font-display text-[26px] font-semibold tracking-tight">概览</h1>
+        <div id="statsGrid" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
+        <div class="rounded-card border border-line/10 bg-elev/50 p-6">
+          <h2 class="font-display text-[17px] font-semibold">上线检查清单</h2>
+          <ul id="checklist" class="mt-4 space-y-2.5 text-[14.5px] text-muted"></ul>
+        </div>
+      </section>
+
+      <!-- ---------- 主页信息 ---------- -->
+      <section data-panel="profile" class="hidden space-y-6">
+        <h1 class="font-display text-[26px] font-semibold tracking-tight">主页信息</h1>
+        <form id="profileForm" class="space-y-8">
+          <div class="rounded-card border border-line/10 bg-elev/50 p-6">
+            <h2 class="font-display text-[17px] font-semibold">基本资料</h2>
+            <div class="mt-5 grid gap-5 sm:grid-cols-2">
+              <div class="flex flex-col gap-2">
+                <label for="pfName" class="text-[13px] font-medium">昵称 / 姓名</label>
+                <input id="pfName" name="name" class="field" maxlength="60" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfRole" class="text-[13px] font-medium">身份描述</label>
+                <input id="pfRole" name="role" class="field" maxlength="80" placeholder="产品设计师 / 全栈开发者" />
+              </div>
+              <div class="flex flex-col gap-2 sm:col-span-2">
+                <label for="pfTagline" class="text-[13px] font-medium">一句话签名</label>
+                <input id="pfTagline" name="tagline" class="field" maxlength="160" />
+              </div>
+              <div class="flex flex-col gap-2 sm:col-span-2">
+                <label for="pfBio" class="text-[13px] font-medium">个人简介</label>
+                <textarea id="pfBio" name="bio" rows="5" class="field resize-y" maxlength="1200"></textarea>
+                <span class="text-[12.5px] text-muted">支持换行，最多 1200 字。</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfLocation" class="text-[13px] font-medium">所在地</label>
+                <input id="pfLocation" name="location" class="field" maxlength="80" placeholder="成都 · 中国" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfEmail" class="text-[13px] font-medium">邮箱</label>
+                <input id="pfEmail" name="email" class="field" maxlength="120" placeholder="hi@example.com" />
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-card border border-line/10 bg-elev/50 p-6">
+            <h2 class="font-display text-[17px] font-semibold">头像与链接</h2>
+            <div class="mt-5 grid gap-5 sm:grid-cols-2">
+              <div class="flex flex-col gap-2 sm:col-span-2">
+                <label for="pfAvatar" class="text-[13px] font-medium">头像地址</label>
+                <div class="flex flex-wrap items-center gap-3">
+                  <input id="pfAvatar" name="avatar" class="field flex-1 min-w-[220px]" placeholder="/uploads/xxx.png 或 https://..." />
+                  <input id="avatarFile" type="file" accept="image/*" class="hidden" />
+                  <button type="button" id="avatarUploadBtn" class="btn-ghost">上传头像</button>
+                  <span id="avatarStatus" class="text-[12.5px] text-muted"></span>
+                </div>
+                <img id="avatarPreview" alt="头像预览" class="mt-3 h-20 w-20 rounded-2xl border border-line/10 object-cover" />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfWebsite" class="text-[13px] font-medium">个人网站</label>
+                <input id="pfWebsite" name="website" class="field" placeholder="https://..." />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfGithub" class="text-[13px] font-medium">GitHub</label>
+                <input id="pfGithub" name="github" class="field" placeholder="https://github.com/..." />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfTwitter" class="text-[13px] font-medium">X / Twitter</label>
+                <input id="pfTwitter" name="twitter" class="field" placeholder="https://x.com/..." />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfWeibo" class="text-[13px] font-medium">微博</label>
+                <input id="pfWeibo" name="weibo" class="field" placeholder="https://weibo.com/..." />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label for="pfWechat" class="text-[13px] font-medium">微信号（仅展示文本）</label>
+                <input id="pfWechat" name="wechat" class="field" maxlength="60" />
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button type="submit" class="btn-primary">保存主页信息</button>
+            <span id="profileHint" class="text-[13px] text-muted" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+
+        <!-- 技能 -->
+        <div class="rounded-card border border-line/10 bg-elev/50 p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="font-display text-[17px] font-semibold">技能标签</h2>
+            <button type="button" id="addSkillBtn" class="mini-btn">+ 新增技能</button>
+          </div>
+          <div class="mt-4 overflow-x-auto"><table class="data-table" id="skillTable"></table></div>
+        </div>
+      </section>
+
+      <!-- ---------- 作品集 ---------- -->
+      <section data-panel="projects" class="hidden space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1 class="font-display text-[26px] font-semibold tracking-tight">作品集</h1>
+          <button type="button" id="addProjectBtn" class="btn-primary">新增作品</button>
+        </div>
+        <div class="overflow-x-auto rounded-card border border-line/10 bg-elev/50 p-2">
+          <table class="data-table" id="projectTable"></table>
+        </div>
+      </section>
+
+      <!-- ---------- 博客 ---------- -->
+      <section data-panel="posts" class="hidden space-y-6">
+        <div id="postListWrap" class="space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h1 class="font-display text-[26px] font-semibold tracking-tight">博客文章</h1>
+            <button type="button" id="newPostBtn" class="btn-primary">写新文章</button>
+          </div>
+          <div class="overflow-x-auto rounded-card border border-line/10 bg-elev/50 p-2">
+            <table class="data-table" id="postTable"></table>
+          </div>
+        </div>
+
+        <!-- Markdown 编辑器 -->
+        <div id="postEditor" class="hidden space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="editorTitle" class="font-display text-[22px] font-semibold tracking-tight">写新文章</h2>
+            <div class="flex items-center gap-2">
+              <button type="button" id="cancelPostBtn" class="mini-btn">取消</button>
+              <button type="button" id="savePostBtn" class="btn-primary">保存文章</button>
+            </div>
+          </div>
+
+          <div class="grid gap-5 sm:grid-cols-3">
+            <div class="flex flex-col gap-2 sm:col-span-2">
+              <label for="poTitle" class="text-[13px] font-medium">标题</label>
+              <input id="poTitle" class="field" maxlength="120" placeholder="文章标题" />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="poSlug" class="text-[13px] font-medium">URL 别名（留空自动生成）</label>
+              <input id="poSlug" class="field font-mono text-[13px]" maxlength="80" placeholder="my-first-post" />
+            </div>
+            <div class="flex flex-col gap-2 sm:col-span-2">
+              <label for="poSummary" class="text-[13px] font-medium">摘要（留空自动截取正文）</label>
+              <input id="poSummary" class="field" maxlength="300" />
+            </div>
+            <div class="flex flex-col gap-2">
+              <label for="poTags" class="text-[13px] font-medium">标签（逗号分隔）</label>
+              <input id="poTags" class="field" maxlength="120" placeholder="设计,运维" />
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-5">
+            <label class="flex cursor-pointer items-center gap-2 text-[14px]">
+              <input id="poPublished" type="checkbox" class="h-4 w-4 accent-[rgb(var(--c-accent))]" checked />
+              立即发布（取消勾选则保存为草稿）
+            </label>
+            <span id="editorHint" class="text-[13px] text-muted" role="status" aria-live="polite"></span>
+          </div>
+
+          <div class="md-split">
+            <div class="flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[13px] font-medium">Markdown 正文</span>
+                <span id="mdCount" class="font-mono text-[12px] text-muted">0 字</span>
+              </div>
+              <textarea id="poContent" class="field md-editor" placeholder="# 标题&#10;&#10;正文支持 Markdown 语法。"></textarea>
+            </div>
+            <div class="flex flex-col gap-2">
+              <span class="text-[13px] font-medium">实时预览</span>
+              <div id="mdPreview" class="md-preview md-body"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 留言 ---------- -->
+      <section data-panel="messages" class="hidden space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h1 class="font-display text-[26px] font-semibold tracking-tight">访客留言</h1>
+          <button type="button" id="refreshMsgBtn" class="mini-btn">刷新</button>
+        </div>
+        <div class="overflow-x-auto rounded-card border border-line/10 bg-elev/50 p-2">
+          <table class="data-table" id="messageTable"></table>
+        </div>
+      </section>
+
+      <!-- ---------- 安全 ---------- -->
+      <section data-panel="security" class="hidden space-y-6">
+        <h1 class="font-display text-[26px] font-semibold tracking-tight">安全设置</h1>
+        <form id="pwdForm" class="max-w-[460px] space-y-5 rounded-card border border-line/10 bg-elev/50 p-6">
+          <div class="flex flex-col gap-2">
+            <label for="pwCurrent" class="text-[13px] font-medium">当前密码</label>
+            <input id="pwCurrent" type="password" class="field" autocomplete="current-password" required />
+          </div>
+          <div class="flex flex-col gap-2">
+            <label for="pwNext" class="text-[13px] font-medium">新密码</label>
+            <input id="pwNext" type="password" class="field" autocomplete="new-password" required />
+            <span class="text-[12.5px] text-muted">至少 8 位，且需同时包含字母与数字。</span>
+          </div>
+          <div class="flex flex-col gap-2">
+            <label for="pwConfirm" class="text-[13px] font-medium">确认新密码</label>
+            <input id="pwConfirm" type="password" class="field" autocomplete="new-password" required />
+          </div>
+          <p id="pwdHint" class="min-h-[18px] text-[13px] text-muted" role="status" aria-live="polite"></p>
+          <button type="submit" class="btn-primary">更新密码</button>
+          <p class="text-[12.5px] leading-relaxed text-muted">
+            修改成功后所有登录会话（含其它设备）立即失效，需要用新密码重新登录。
+          </p>
+        </form>
+
+        <div class="max-w-[560px] rounded-card border border-line/10 bg-elev/50 p-6">
+          <h2 class="font-display text-[17px] font-semibold">账号信息</h2>
+          <dl class="mt-4 space-y-2 text-[14px]">
+            <div class="flex justify-between gap-4"><dt class="text-muted">登录账号</dt><dd id="secUser" class="font-mono"></dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-muted">上次登录</dt><dd id="secLast" class="font-mono"></dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-muted">当前进程内存</dt><dd id="secMem" class="font-mono"></dd></div>
+          </dl>
+          <p id="secWarn" class="mt-4 hidden rounded-xl border border-accent/30 bg-accent/5 p-3 text-[13px] leading-relaxed">
+            .env 中的 SESSION_SECRET 为空，当前使用的是临时密钥，重启服务后需要重新登录。建议执行
+            <code class="font-mono">openssl rand -hex 32</code> 并写入 .env。
+          </p>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+<script src="/js/admin.js" defer></script>
+</body>
+</html>

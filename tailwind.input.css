@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  可选的「生产构建」入口。
+  ---------------------------------------------------------------------
+  默认方案是用 Play CDN（零构建，改样式立即生效，非常适合个人站）。
+  如果你希望更极致的首屏性能与更严格的 CSP，可以改成本地构建的 CSS：
+
+    1. npm run build:css          # 生成 public/css/tailwind.css（约 10~20KB）
+    2. 把 index.html 与 admin.html 里这两行：
+
+         <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+         <script>tailwind.config = { ... }</script>
+
+       替换为：
+
+         <link rel="stylesheet" href="/css/tailwind.css" />
+
+  注意：public/css/app.css 与自定义类依然需要保留，它放在 tailwind.css 之后引入。
+*/

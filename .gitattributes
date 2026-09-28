@@ -1,0 +1,19 @@
+# 统一按 LF 存储与检出。
+# 原因：本项目部署在 Linux，Windows 默认的 core.autocrlf=true 会把 shell 脚本
+# 检出成 CRLF 行尾，导致服务器上执行时出现 /bin/bash^M: bad interpreter 错误。
+* text=auto eol=lf
+
+# 这几个文件对行尾最敏感，显式再声明一次
+*.sh   text eol=lf
+*.conf text eol=lf
+
+# 二进制文件不参与换行符转换
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary

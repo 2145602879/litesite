@@ -1,0 +1,7 @@
+# PM2 日志目录
+# ecosystem.config.js 里把 err.log / out.log 写到这里。
+# 保留本文件是为了让 git 能跟踪这个空目录，避免 PM2 首次启动时因目录不存在而报错。
+# 注意：日志会持续增长，务必安装轮转模块：
+#   pm2 install pm2-logrotate
+#   pm2 set pm2-logrotate:max_size 10M
+#   pm2 set pm2-logrotate:retain 7

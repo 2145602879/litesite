@@ -1,0 +1,404 @@
+/* =====================================================================
+   litesite 前台样式（补充 Tailwind 的少量自定义部分）
+   ---------------------------------------------------------------------
+   原则：
+   1. 能用 Tailwind 工具类表达的，绝不写进这里
+   2. 这里只放：氛围层（颗粒/光晕）、统一的按钮与表单控件、骨架屏、
+      滚动进场、Markdown 排版、阅读层
+   3. 不引入任何动画库，全部用 CSS transition + IntersectionObserver
+   ===================================================================== */
+
+/* ---------------------------------------------------------------
+   1. 氛围层：纸张颗粒 + 柔和渐变光晕
+   --------------------------------------------------------------- */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html.dark .grain { opacity: 0.05; }
+
+/* 两团低饱和光斑，只用 accent 一个色系的变体，避免彩色噪声 */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(46% 38% at 12% 4%, rgb(var(--c-accent) / 0.13), transparent 62%),
+    radial-gradient(40% 34% at 92% 22%, rgb(var(--c-accent2) / 0.10), transparent 66%),
+    radial-gradient(50% 40% at 50% 108%, rgb(var(--c-accent) / 0.07), transparent 70%);
+}
+html.dark .aurora {
+  background-image:
+    radial-gradient(46% 38% at 12% 4%, rgb(var(--c-accent) / 0.16), transparent 62%),
+    radial-gradient(40% 34% at 92% 22%, rgb(var(--c-accent2) / 0.10), transparent 66%),
+    radial-gradient(50% 40% at 50% 108%, rgb(var(--c-accent) / 0.08), transparent 70%);
+}
+
+/* ---------------------------------------------------------------
+   2. 导航与页脚
+   --------------------------------------------------------------- */
+.nav-link {
+  position: relative;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  font-size: 14px;
+  color: rgb(var(--c-muted));
+  transition: color 0.22s ease, background-color 0.22s ease;
+}
+.nav-link:hover {
+  color: rgb(var(--c-fg));
+  background-color: rgb(var(--c-fg) / 0.06);
+}
+.drawer-link {
+  display: block;
+  padding: 0.7rem 0.25rem;
+  font-size: 15px;
+  color: rgb(var(--c-fg));
+  border-bottom: 1px solid rgb(var(--c-line) / 0.08);
+}
+.drawer-link:last-child { border-bottom: 0; }
+.foot-link {
+  color: rgb(var(--c-muted));
+  transition: color 0.2s ease;
+}
+.foot-link:hover { color: rgb(var(--c-fg)); }
+
+/* 图标按钮：正方形、药丸圆角，与全站圆角体系一致 */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  height: 38px;
+  width: 38px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--c-line) / 0.12);
+  color: rgb(var(--c-fg));
+  background-color: transparent;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+.icon-btn:hover { background-color: rgb(var(--c-fg) / 0.06); }
+.icon-btn:active { transform: scale(0.94); }
+
+/* ---------------------------------------------------------------
+   3. 按钮：只有两种，主按钮用墨色（对比度稳定达 AA），幽灵按钮用描边
+   --------------------------------------------------------------- */
+.btn-primary,
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 44px;
+  padding: 0 1.35rem;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 500;
+  white-space: nowrap; /* 按钮文字永不换行 */
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+.btn-primary {
+  background-color: rgb(var(--c-fg));
+  color: rgb(var(--c-bg));
+  border: 1px solid rgb(var(--c-fg));
+}
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-ghost {
+  background-color: transparent;
+  color: rgb(var(--c-fg));
+  border: 1px solid rgb(var(--c-line) / 0.18);
+}
+.btn-ghost:hover { background-color: rgb(var(--c-fg) / 0.06); }
+.btn-ghost:active { transform: scale(0.98); }
+
+/* ---------------------------------------------------------------
+   4. 表单控件：标签在输入框上方，占位符对比度足够
+   --------------------------------------------------------------- */
+.field {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--c-line) / 0.16);
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-fg));
+  padding: 0.65rem 0.85rem;
+  font-size: 15px;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.field::placeholder { color: rgb(var(--c-muted) / 0.85); }
+.field:focus {
+  outline: none;
+  border-color: rgb(var(--c-accent));
+  box-shadow: 0 0 0 3px rgb(var(--c-accent) / 0.18);
+}
+.field[aria-invalid="true"] { border-color: #d0453b; }
+
+/* 全站统一的键盘焦点样式（可访问性） */
+:focus-visible {
+  outline: 2px solid rgb(var(--c-accent));
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------
+   5. 骨架屏（替代转圈 loading，形状与最终内容一致，避免布局跳动）
+   --------------------------------------------------------------- */
+.skeleton,
+.skeleton-post {
+  border-radius: 20px;
+  border: 1px solid rgb(var(--c-line) / 0.08);
+  background-image: linear-gradient(
+    100deg,
+    rgb(var(--c-fg) / 0.04) 30%,
+    rgb(var(--c-fg) / 0.08) 50%,
+    rgb(var(--c-fg) / 0.04) 70%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+.skeleton-post {
+  height: 92px;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid rgb(var(--c-line) / 0.08);
+}
+@keyframes shimmer {
+  from { background-position: 120% 0; }
+  to { background-position: -120% 0; }
+}
+
+/* ---------------------------------------------------------------
+   6. 滚动进场动画（极克制：只做 14px 位移 + 淡入）
+   --------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.7s cubic-bezier(0.16, 0.84, 0.44, 1),
+              transform 0.7s cubic-bezier(0.16, 0.84, 0.44, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* ---------------------------------------------------------------
+   7. 作品卡片与标签
+   --------------------------------------------------------------- */
+.card-media {
+  overflow: hidden;
+  border-radius: 16px;
+  background-color: rgb(var(--c-fg) / 0.05);
+}
+.card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s cubic-bezier(0.16, 0.84, 0.44, 1), filter 0.4s ease;
+}
+.work-card:hover .card-media img { transform: scale(1.035); }
+.work-card .card-title { transition: color 0.2s ease; }
+.work-card:hover .card-title { color: rgb(var(--c-accent)); }
+.work-arrow { transition: transform 0.3s cubic-bezier(0.16, 0.84, 0.44, 1); }
+.work-card:hover .work-arrow { transform: translate(3px, -3px); }
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--c-line) / 0.14);
+  font-size: 12px;
+  color: rgb(var(--c-muted));
+  white-space: nowrap;
+}
+
+/* 技能强度条：细线，只有真实数据（1~5）才渲染 */
+.level {
+  display: inline-flex;
+  gap: 3px;
+}
+.level i {
+  display: block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background-color: rgb(var(--c-line) / 0.14);
+}
+.level i.on { background-color: rgb(var(--c-accent)); }
+
+/* ---------------------------------------------------------------
+   8. 博客列表（编辑式列表，不是卡片墙）
+   --------------------------------------------------------------- */
+.post-row {
+  display: grid;
+  gap: 0.5rem 1.5rem;
+  grid-template-columns: 1fr;
+  align-items: baseline;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid rgb(var(--c-line) / 0.09);
+  transition: background-color 0.25s ease;
+}
+@media (min-width: 768px) {
+  .post-row { grid-template-columns: 7.5rem 1fr auto; }
+}
+.post-row:hover { background-color: rgb(var(--c-fg) / 0.025); }
+.post-row .post-title { transition: color 0.22s ease; }
+.post-row:hover .post-title { color: rgb(var(--c-accent)); }
+
+/* ---------------------------------------------------------------
+   9. Markdown 正文排版（自己写，替代体积更大的 typography 插件）
+   --------------------------------------------------------------- */
+.md-body {
+  font-size: 16.5px;
+  line-height: 1.78;
+  color: rgb(var(--c-fg) / 0.92);
+  word-wrap: break-word;
+}
+.md-body > * + * { margin-top: 1.1em; }
+.md-body h2 {
+  font-family: "Space Grotesk", Outfit, sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 2em;
+  line-height: 1.3;
+}
+.md-body h3 {
+  font-family: "Space Grotesk", Outfit, sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  margin-top: 1.6em;
+}
+.md-body a {
+  color: rgb(var(--c-accent));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.md-body strong { font-weight: 600; }
+.md-body ul, .md-body ol { padding-left: 1.35em; }
+.md-body ul { list-style: disc; }
+.md-body ol { list-style: decimal; }
+.md-body li + li { margin-top: 0.4em; }
+.md-body blockquote {
+  border-left: 2px solid rgb(var(--c-accent));
+  padding: 0.15em 0 0.15em 1em;
+  color: rgb(var(--c-muted));
+  font-style: normal;
+}
+.md-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background-color: rgb(var(--c-fg) / 0.07);
+}
+.md-body pre {
+  overflow-x: auto;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background-color: rgb(var(--c-fg) / 0.06);
+  border: 1px solid rgb(var(--c-line) / 0.08);
+}
+.md-body pre code { background: transparent; padding: 0; font-size: 13.5px; line-height: 1.65; }
+.md-body img { border-radius: 14px; max-width: 100%; height: auto; }
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  display: block;
+  overflow-x: auto;
+}
+.md-body th, .md-body td {
+  border: 1px solid rgb(var(--c-line) / 0.12);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+}
+.md-body th { background-color: rgb(var(--c-fg) / 0.04); font-weight: 600; }
+.md-body hr { border: 0; border-top: 1px solid rgb(var(--c-line) / 0.12); }
+
+/* ---------------------------------------------------------------
+   10. 文章阅读层（原生 dialog）
+   --------------------------------------------------------------- */
+.reader {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: rgb(var(--c-bg) / 0.86);
+  backdrop-filter: blur(10px);
+  color: rgb(var(--c-fg));
+}
+.reader::backdrop { background-color: rgb(0 0 0 / 0.44); }
+.reader-inner {
+  margin: 0 auto;
+  max-width: 760px;
+  padding: 5.5rem 1.25rem 5rem;
+}
+@media (min-width: 640px) {
+  .reader-inner { padding: 6rem 2rem 6rem; }
+}
+.reader[open] .reader-inner { animation: readerIn 0.34s cubic-bezier(0.16, 0.84, 0.44, 1) both; }
+@keyframes readerIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.reader-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgb(var(--c-line) / 0.1);
+}
+.reader-meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: rgb(var(--c-muted));
+}
+.reader-body-wrap { padding-top: 2rem; }
+.reader-foot {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgb(var(--c-line) / 0.1);
+}
+
+/* ---------------------------------------------------------------
+   11. 滚动条与选中色
+   --------------------------------------------------------------- */
+::selection { background-color: rgb(var(--c-accent) / 0.24); }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--c-line) / 0.25) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--c-line) / 0.2);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgb(var(--c-line) / 0.32); }
+
+/* ---------------------------------------------------------------
+   12. 无障碍：尊重"减少动态效果"的系统设置
+   --------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .skeleton, .skeleton-post { animation: none; }
+  .card-media img, .work-arrow, .reader[open] .reader-inner { transition: none; animation: none; }
+  html.theme-anim, html.theme-anim body { transition: none; }
+}
+
+/* 打印时不输出氛围层 */
+@media print {
+  .grain, .aurora, header, footer, .reader-foot { display: none !important; }
+}

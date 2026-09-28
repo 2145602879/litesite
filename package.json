@@ -1,0 +1,25 @@
+{
+  "name": "litesite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "轻量个人主页 + 独立管理后台（Express + SQLite），为 2核1G VPS 深度优化",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node src/seed.js",
+    "reset-password": "node src/reset-password.js",
+    "test:api": "node tests/api-test.js",
+    "build:css": "npx --yes tailwindcss@3.4.16 -i ./tailwind.input.css -o ./public/css/tailwind.css --minify"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.11.1",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^2.0.0"
+  }
+}

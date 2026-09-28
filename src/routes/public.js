@@ -5,6 +5,7 @@
  */
 const express = require('express');
 const db = require('../db');
+const github = require('../github');
 const U = require('../util');
 const limit = require('../ratelimit');
 const config = require('../config');
@@ -18,6 +19,7 @@ const stmts = {
   projects: db.prepare(
     'SELECT id, title, description, image, link, tags, featured FROM projects ORDER BY sort, id DESC'
   ),
+  projectCount: db.prepare('SELECT COUNT(*) AS c FROM projects'),
   posts: db.prepare(
     `SELECT id, title, slug, summary, tags, views, created_at
        FROM posts WHERE published = 1
@@ -66,6 +68,15 @@ function publicProfile() {
   };
 }
 
+/**
+ * 当前数据源下的作品条数。
+ * GitHub 模式返回仓库数（可能为 0，表示还没抓到），手动模式返回 null 让调用方查库。
+ */
+function reposForStats() {
+  const repos = github.list();
+  return repos ? repos.length : null;
+}
+
 // ------------------------------------------------------------------
 // GET /api/site  首页首屏所需的全部数据（一次请求，减少往返）
 // ------------------------------------------------------------------
@@ -86,7 +97,8 @@ router.get('/site', (req, res) => {
     profile: publicProfile(),
     skills: Object.keys(grouped).map((category) => ({ category, items: grouped[category] })),
     stats: {
-      projects: stmts.projects.all().length,
+      // 作品数跟随当前数据源：GitHub 模式下就是仓库条数
+      projects: reposForStats() ?? stmts.projectCount.get().c,
       posts: stmts.postCount.get().c,
       messages: stmts.messageCount.get().c,
     },
@@ -95,11 +107,33 @@ router.get('/site', (req, res) => {
 
 // ------------------------------------------------------------------
 // GET /api/projects
+// 数据源可能是 GitHub 公开仓库（缓存里直接取，不查库、不阻塞），
+// 也可能是后台手动录入的作品，由 PORTFOLIO_SOURCE / GITHUB_USERNAME 决定。
 // ------------------------------------------------------------------
 router.get('/projects', (req, res) => {
-  const rows = stmts.projects.all();
+  const repos = github.list(); // null 表示当前是手动数据源
+
+  if (repos) {
+    const st = github.stats();
+    // 刚重启、第一次抓取还没回来的那一两秒：缓存是空的但不是「没有作品」，
+    // 用 pending 告诉前端保持骨架屏并稍后重试，避免误报「作品还在整理中」。
+    const pending = repos.length === 0 && st.refreshing;
+    // 抓取彻底失败且没有旧缓存时，同样不要把空列表缓存起来
+    res.set('Cache-Control', pending || repos.length === 0 ? 'no-store' : 'public, max-age=60');
+    return res.json({
+      source: 'github',
+      total: repos.length,
+      items: repos,
+      pending,
+      error: repos.length === 0 ? st.error : '',
+    });
+  }
+
   res.set('Cache-Control', 'public, max-age=60');
+  const rows = stmts.projects.all();
   res.json({
+    source: 'manual',
+    total: rows.length,
     items: rows.map((r) => ({
       id: r.id,
       title: r.title,

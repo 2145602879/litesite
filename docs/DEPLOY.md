@@ -669,3 +669,99 @@ pm2 reload litesite
 > ```
 >
 > 并在 `location /api/ {` 内首行写 `error_page 500 502 503 504 = @api_restarting;`，然后 `nginx -t && systemctl reload nginx`。
+
+---
+
+## 15. 启用自动部署（可选，但推荐）
+
+到这里为止，更新线上站点的流程是「本地 `git push`，再登服务器敲 `/root/update.sh`」。
+如果连这一步都想省掉，可以让服务器自己轮询仓库：**push 之后 3 分钟内自动上线**。
+
+### 15.1 一条命令启用
+
+```bash
+sudo -i
+cd /var/www/litesite
+git pull
+bash deploy/enable-auto-deploy.sh 你的GitHub用户名
+```
+
+需要 root，因为要写 `/etc/cron.d` 下的 cron 文件。脚本是幂等的，重复执行不会重复安装。
+
+它会依次做四件事：
+
+1. 幂等写入 `.env` 的作品集配置（`PORTFOLIO_SOURCE=github`、`GITHUB_USERNAME=<参数>`、`GITHUB_MAX=12`、`GITHUB_CACHE_MINUTES=30`），已有同名键就原地覆盖，不会写出重复行
+2. 自检服务器能否访问 `api.github.com`，并打印读到的仓库数，网络不通会直接提示
+3. 安装 `/root/litesite-auto-deploy.sh` 与 `/etc/cron.d/litesite-auto-deploy`
+4. 重启服务，并打印一次健康检查
+
+装好之后会多出这三个文件：
+
+| 路径 | 作用 |
+| --- | --- |
+| `/root/litesite-auto-deploy.sh` | 部署脚本本体，也可以手动执行一次 |
+| `/etc/cron.d/litesite-auto-deploy` | cron 定义，每 3 分钟调用一次上面的脚本 |
+| `/var/log/litesite-deploy.log` | 部署日志，超过 1 MB 自动只保留最后 2000 行 |
+
+### 15.2 每次轮询做了什么
+
+1. 用 `git ls-remote` 取远端分支的提交号（约 1 KB）与本地比对，一致就静默退出
+2. 只有真有新提交才 `git fetch`，然后备份数据库，只保留最近 10 份
+3. `git reset --hard <远端提交号>`
+4. 仅当 `package.json` / `package-lock.json` 发生变化时才 `npm ci --omit=dev`
+5. `pm2 reload litesite --update-env`
+6. 最后跑一次健康检查
+
+两个关键取舍：
+
+- **失败不落地**：任何一步出错都不会执行 `git reset` 与 `pm2 reload`，线上继续跑旧版本。一次失败的部署最多是「更新没生效」，不会把站点搞挂
+- **`flock` 串行化**：上一轮还没跑完时，下一轮直接退出，不会出现两个部署脚本同时改工作区
+
+> ⚠️ 服务器上的 `/var/www/litesite` 是**部署目标，不是开发环境**。脚本用 `git reset --hard <远端提交号>`
+> 对齐代码，所以任何直接在服务器上改的源码都会在下一轮被覆盖。要改代码请在本地改、提交、push。
+> `.env`、`data/`、`node_modules/`、`public/uploads/` 都在 `.gitignore` 里，不受影响。
+
+### 15.3 查看与排错
+
+```bash
+# 实时看部署日志
+tail -f /var/log/litesite-deploy.log
+
+# 不想等 3 分钟，手动触发一轮
+/root/litesite-auto-deploy.sh
+
+# cron 服务本身是否在跑
+systemctl status cron
+
+# 工作区停在哪次提交、有没有被改脏
+git -C /var/www/litesite log --oneline -3
+git -C /var/www/litesite status --short
+
+# 作品集抓取状态（在本地电脑上也能看，不用登服务器）
+curl -s https://你的域名/api/health
+```
+
+常见现象对照：
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 日志里完全没有新记录 | cron 没生效 | `systemctl status cron`；确认 `/etc/cron.d/litesite-auto-deploy` 存在且权限是 `644` |
+| 每轮都提示没有新提交 | 远端分支不叫 `main`，或者确实还没推新提交 | `git -C /var/www/litesite log --oneline -3`，和 GitHub 上的最新提交对一下 |
+| 日志里 `npm ci` 被杀 | 1G 内存装依赖时触发 OOM Killer | 按本文 1.3 节给机器加 1GB Swap，或改用手动 `/root/update.sh` |
+| 更新成功但页面没变 | 浏览器缓存了旧的静态资源 | 在 HTML 引用处加版本号（`/js/app.js?v=2`），见 14.3 |
+| 作品集是空的 | GitHub 抓取失败，或用户名写错 | `curl -s http://127.0.0.1:3000/api/health` 看 `portfolio.error` |
+
+### 15.4 关闭自动部署
+
+```bash
+rm /etc/cron.d/litesite-auto-deploy
+```
+
+删掉 cron 文件即可，`/root/litesite-auto-deploy.sh` 留着不影响任何东西（想彻底清理可以一并删掉）。
+关闭后回到 14.2 的手动流程，两种方式不冲突，随时可以再启用。
+
+> **为什么是「服务器定时拉」而不是「GitHub Actions 推」**
+>
+> 推模式需要给 GitHub 开放入站 SSH，或者把私钥放进仓库 Secrets，还要应对 GCP OS Login 的配置差异。
+> 拉模式直接复用部署时已经配好的**只读 Deploy Key**：服务器不需要接受任何入站连接，也不需要额外凭据，
+> 暴露面更小。代价是更新最多延迟一个轮询周期（3 分钟），对个人站完全可以接受。

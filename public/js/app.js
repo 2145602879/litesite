@@ -258,32 +258,176 @@
   }
 
   // ------------------------------------------------------------------
-  // 7. 作品集（不对称网格：4 列宽 + 2 列窄交替，避免"三张一样的卡片"）
+  // 7. 作品集
+  //    数据源可能是 GitHub 公开仓库（后端抓取 + 缓存），也可能是后台手动录入。
+  //    GitHub 卡片刻意不加载任何外部图片：封面由「仓库语言配色」现场生成渐变，
+  //    既省流量与解码内存，也不会因为占位图服务在国内打不开而变成灰块。
   // ------------------------------------------------------------------
-  async function loadProjects() {
+
+  /** 相对时间：作品集里「3 天前更新」比「2026.09.23」更有信息量 */
+  function fmtAgo(iso) {
+    const t = Date.parse(iso || '');
+    if (!t) return '';
+    const diff = Date.now() - t;
+    const hour = 3600000;
+    const day = 24 * hour;
+    if (diff < hour) return '刚刚更新';
+    if (diff < day) return `${Math.floor(diff / hour)} 小时前更新`;
+    if (diff < 30 * day) return `${Math.floor(diff / day)} 天前更新`;
+    if (diff < 365 * day) return `${Math.floor(diff / (30 * day))} 个月前更新`;
+    return `${fmtDate(iso)} 更新`;
+  }
+
+  const ICON_STAR =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.6l2.7 5.5 6 .9-4.3 4.2 1 6L12 17.4 6.6 20.2l1-6L3.3 10l6-.9z"/></svg>';
+  const ICON_FORK =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="6" r="2.5"/><path d="M6.5 15.5V8.5A2.5 2.5 0 019 6h6"/></svg>';
+
+  /**
+   * 计算每张卡占几列（栅格共 6 列）。
+   * 规则：成对出「4 + 2」并隔行镜像（[4,2] [2,4] [4,2] …），落单的最后一张铺满 6 列。
+   * 隔行镜像比机械重复更有节奏，也和首页骨架屏的排布一致，减少数据到位时的位移。
+   * 任何条数下每一行都正好填满，不会出现「最后一行只剩一张窄卡、右边空一块」。
+   */
+  function layoutSpans(total) {
+    const spans = [];
+    let i = 0;
+    let flip = false;
+    while (i < total) {
+      if (total - i === 1) {
+        spans.push(6);
+        i += 1;
+      } else if (flip) {
+        spans.push(2, 4);
+        i += 2;
+        flip = false;
+      } else {
+        spans.push(4, 2);
+        i += 2;
+        flip = true;
+      }
+    }
+    return spans.slice(0, total);
+  }
+
+  /**
+   * 仓库封面：用语言配色生成渐变 + 首字母水印，纯 CSS，零外部请求。
+   * 语言信息刻意不压在封面上（标签压图是最容易显廉价的做法），
+   * 而是放进下方元信息行，沿用 GitHub 自己的「色点 + 语言名」约定。
+   */
+  function repoCover(item, ratio) {
+    const initial = String(item.title || item.name || '?').trim().charAt(0).toUpperCase();
+    return `
+      <div class="card-media repo-cover ${ratio}" style="--cover:${esc(item.cover || '120 126 140')}">
+        <span class="repo-mark" aria-hidden="true">${esc(initial)}</span>
+        <div class="repo-cover-body">
+          <h3 class="card-title repo-name">${esc(item.title)}</h3>
+        </div>
+      </div>`;
+  }
+
+  /** 仓库元信息：语言、更新时间、星标、分支、在线预览 */
+  function repoMeta(item) {
+    const bits = [];
+    if (item.language) {
+      bits.push(
+        `<span class="repo-lang"><i style="background:${esc(item.color || '')}"></i>${esc(item.language)}</span>`
+      );
+    }
+    const ago = fmtAgo(item.updatedAt);
+    if (ago) bits.push(`<span class="repo-ago">${esc(ago)}</span>`);
+    if (item.stars > 0) bits.push(`<span class="repo-stat">${ICON_STAR}${item.stars}</span>`);
+    if (item.forks > 0) bits.push(`<span class="repo-stat">${ICON_FORK}${item.forks}</span>`);
+    if (item.archived) bits.push('<span class="repo-archived">已归档</span>');
+    // 有线上地址的项目额外给一个入口：必须抬到拉伸链接之上才点得到
+    if (item.homepage) {
+      bits.push(
+        `<a class="repo-live" href="${esc(item.homepage)}" target="_blank" rel="noopener noreferrer nofollow">在线预览</a>`
+      );
+    }
+    return bits.length ? `<div class="repo-meta">${bits.join('')}</div>` : '';
+  }
+
+  /**
+   * 加载作品集。
+   * attempt 用于冷启动重试：服务刚重启时后端可能还没抓到 GitHub 数据，
+   * 此时先保留骨架屏等一会儿再试，而不是直接告诉访客「作品还在整理中」。
+   */
+  async function loadProjects(attempt) {
     const grid = $('#projectGrid');
     if (!grid) return;
+    const tries = attempt || 0;
     try {
-      const { items } = await api('/api/projects');
+      const data = await api('/api/projects');
+      const items = data.items || [];
+
+      if (data.pending && tries < 3) {
+        setTimeout(() => loadProjects(tries + 1), 1200);
+        return; // 不动骨架屏
+      }
+
+      // 首屏统计里的「作品」数量跟随真实数据源，避免和列表对不上
+      $$('[data-bind="statProjects"]').forEach((el) => {
+        el.textContent = String(items.length);
+      });
+
       if (!items.length) {
-        grid.innerHTML =
-          '<p class="text-[15px] text-muted">作品还在整理中，稍后再来看看。</p>';
+        // 取不到数据和「确实还没有作品」是两回事，不要说错话
+        if (data.error) console.warn('[作品集] 数据源异常：', data.error);
+        grid.innerHTML = data.error
+          ? '<p class="text-[15px] text-muted">作品集暂时取不到数据，稍后刷新看看。</p>'
+          : '<p class="text-[15px] text-muted">作品还在整理中，稍后再来看看。</p>';
         return;
       }
 
+      const spans = layoutSpans(items.length);
       grid.innerHTML = items
         .map((item, i) => {
-          const wide = i % 4 === 0 || i % 4 === 3;
-          const span = wide ? 'md:col-span-4' : 'md:col-span-2';
-          const ratio = wide ? 'aspect-[16/10]' : 'aspect-[4/3]';
-          // 按展示尺寸请求图片，减少带宽与解码内存
-          const w = wide ? 1000 : 640;
-          const h = wide ? 620 : 480;
-          const img = item.image || `https://picsum.photos/seed/lite-${item.id}/${w}/${h}`;
+          // 不对称网格：4 列宽 + 2 列窄交替，落单的一张铺满整行
+          const col = spans[i] || 2;
+          const span =
+            col === 6 ? 'md:col-span-6' : col === 4 ? 'md:col-span-4' : 'md:col-span-2';
+          const ratio =
+            col === 6 ? 'aspect-[21/9]' : col === 4 ? 'aspect-[16/10]' : 'aspect-[4/3]';
+
           const tags = (item.tags || [])
             .slice(0, 4)
             .map((t) => `<span class="tag">${esc(t)}</span>`)
             .join('');
+
+          const arrow = `
+            <svg class="work-arrow mt-1 h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 17L17 7M9 7h8v8" /></svg>`;
+
+          // 有 cover 字段的是 GitHub 仓库卡片，否则是后台手动录入的作品
+          if (item.cover) {
+            // 覆盖整卡的透明链接：这样整张卡都能点，又不会和「在线预览」
+            // 形成嵌套 <a>（那是无效 HTML）。标题保持纯文本，由覆盖层承接点击。
+            return `
+              <div class="work-card reveal block ${span}">
+                <a class="work-overlay" href="${esc(item.link)}" target="_blank"
+                   rel="noopener noreferrer nofollow" aria-label="${esc(item.title)}（在 GitHub 打开）"></a>
+                ${repoCover(item, ratio)}
+                <div class="mt-5 flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    ${
+                      item.description
+                        ? `<p class="max-w-[46ch] text-[14.5px] leading-relaxed text-muted">${esc(item.description)}</p>`
+                        : '<p class="max-w-[46ch] text-[14.5px] leading-relaxed text-muted/70">这个仓库还没写简介，点进去看看代码吧。</p>'
+                    }
+                    ${repoMeta(item)}
+                    ${tags ? `<div class="mt-4 flex flex-wrap gap-2">${tags}</div>` : ''}
+                  </div>
+                  ${arrow}
+                </div>
+              </div>`;
+          }
+
+          // 手动录入的作品：沿用原来的图片卡片
+          const w = col === 2 ? 640 : col === 6 ? 1200 : 1000;
+          const h = col === 2 ? 480 : col === 6 ? 514 : 620;
+          const img = item.image || `https://picsum.photos/seed/lite-${item.id}/${w}/${h}`;
           const inner = `
             <div class="card-media ${ratio}">
               <img src="${esc(img)}" alt="${esc(item.title)} 项目预览" width="${w}" height="${h}"
@@ -295,13 +439,7 @@
                 <p class="mt-2 max-w-[46ch] text-[14.5px] leading-relaxed text-muted">${esc(item.description)}</p>
                 ${tags ? `<div class="mt-4 flex flex-wrap gap-2">${tags}</div>` : ''}
               </div>
-              ${
-                item.link
-                  ? `<svg class="work-arrow mt-1 h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                       <path d="M7 17L17 7M9 7h8v8" /></svg>`
-                  : ''
-              }
+              ${item.link ? arrow : ''}
             </div>`;
 
           return item.link

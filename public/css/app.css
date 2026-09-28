@@ -221,6 +221,139 @@ html.dark .aurora {
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------
+   7.1 GitHub 仓库卡片
+       封面用「仓库语言配色」现场生成渐变，不请求任何外部图片：
+       既省流量与图片解码内存，也不会因为占位图服务被墙而变成灰块。
+       --cover 是语言色的 RGB 三元组，由 JS 内联注入。
+   --------------------------------------------------------------- */
+.repo-cover {
+  position: relative;
+  background-color: #0b0b0f;
+  background-image:
+    radial-gradient(120% 130% at 6% 0%, rgb(var(--cover, 226 88 20) / 0.46), transparent 58%),
+    radial-gradient(90% 105% at 98% 100%, rgb(var(--cover, 226 88 20) / 0.2), transparent 62%),
+    linear-gradient(165deg, #17171c 0%, #0a0a0e 100%);
+  transition: filter 0.4s ease;
+}
+.work-card:hover .repo-cover {
+  filter: brightness(1.14);
+}
+
+/* 细网格纹理：只在左上角渐显，给代码项目一点「工程感」 */
+.repo-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 36px 36px;
+  -webkit-mask-image: radial-gradient(125% 120% at 12% 8%, #000 28%, transparent 74%);
+  mask-image: radial-gradient(125% 120% at 12% 8%, #000 28%, transparent 74%);
+  pointer-events: none;
+}
+
+/* 仓库名首字母水印 */
+.repo-mark {
+  position: absolute;
+  right: -0.06em;
+  bottom: -0.3em;
+  font-size: clamp(120px, 15vw, 190px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  color: rgb(255 255 255 / 0.055);
+  pointer-events: none;
+  user-select: none;
+}
+
+.repo-cover-body {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /* 封面只有仓库名一个元素，压在底部更像版面而不是居中占位 */
+  justify-content: flex-end;
+  padding: 18px 20px;
+}
+
+/* 语言：色点 + 文字，跟随主题色，不再做成压在封面上的胶囊 */
+.repo-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--c-fg) / 0.72);
+}
+.repo-lang i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.repo-name {
+  max-width: min(100%, 24ch);
+  font-size: clamp(19px, 2.1vw, 26px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #f4f2ee;
+  overflow-wrap: anywhere;
+}
+
+/* 覆盖整卡的透明链接：整张卡可点，且不与「在线预览」形成嵌套 <a> */
+.work-card {
+  position: relative;
+}
+.work-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.repo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 1rem;
+  font-size: 12.5px;
+  color: rgb(var(--c-muted));
+}
+.repo-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.repo-stat svg {
+  width: 13px;
+  height: 13px;
+}
+.repo-archived {
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--c-line) / 0.16);
+  font-size: 11.5px;
+}
+/* 二级链接必须抬到覆盖层之上，否则点不到 */
+.repo-live {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--c-accent) / 0.35);
+  color: rgb(var(--c-accent));
+  font-size: 12px;
+  transition: background-color 0.2s ease;
+}
+.repo-live:hover {
+  background-color: rgb(var(--c-accent) / 0.1);
+}
+
 /* 技能强度条：细线，只有真实数据（1~5）才渲染 */
 .level {
   display: inline-flex;
@@ -394,7 +527,8 @@ html.dark .aurora {
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; transition: none; }
   .skeleton, .skeleton-post { animation: none; }
-  .card-media img, .work-arrow, .reader[open] .reader-inner { transition: none; animation: none; }
+  .card-media img, .work-arrow, .reader[open] .reader-inner,
+  .repo-cover, .repo-live { transition: none; animation: none; }
   html.theme-anim, html.theme-anim body { transition: none; }
 }
 

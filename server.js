@@ -18,6 +18,7 @@ const express = require('express');
 
 const config = require('./src/config');
 const db = require('./src/db');
+const github = require('./src/github');
 const { securityHeaders } = require('./src/security');
 const publicRoutes = require('./src/routes/public');
 const adminRoutes = require('./src/routes/admin');
@@ -57,6 +58,9 @@ app.get('/api/health', (req, res) => {
     uptime: Math.round(process.uptime()),
     rssMB: +(mem.rss / 1048576).toFixed(1),
     heapMB: +(mem.heapUsed / 1048576).toFixed(1),
+    // 作品集数据源状态：source=github 时能看到抓取条数与失败原因，
+    // 方便直接在浏览器里排查，不必登录服务器看日志
+    portfolio: github.stats(),
   });
 });
 
@@ -117,6 +121,9 @@ const server = app.listen(config.port, config.host, () => {
     `[litesite] ${config.site.title} 已启动 → http://${config.host}:${config.port} ` +
       `(env=${config.env}, rss=${(mem.rss / 1048576).toFixed(1)}MB)`
   );
+  // 启动时预热一次作品集数据（GitHub 抓取），让第一位访客就能看到内容。
+  // 不 await：抓取失败也不影响服务启动，前端有骨架屏与手动数据兜底。
+  github.warmup();
 });
 
 // keep-alive 缩短一点，减少空闲连接占用的内存

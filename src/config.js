@@ -76,6 +76,28 @@ const config = {
     loginBlockMs: int(process.env.LOGIN_BLOCK_MINUTES, 15) * 60 * 1000,
   },
 
+  // 作品集数据源：github（抓取 GitHub 公开仓库）或 manual（后台手动录入）
+  // 留空则自动判断：配了 GITHUB_USERNAME 就当作 github
+  portfolio: {
+    source: (process.env.PORTFOLIO_SOURCE || '').trim().toLowerCase(),
+  },
+
+  github: {
+    username: (process.env.GITHUB_USERNAME || '').trim(),
+    // 可选：配了令牌额度从 60/小时 提升到 5000/小时，也能读取私有仓库
+    token: (process.env.GITHUB_TOKEN || '').trim(),
+    // 可选：只展示这些仓库，并按此处的顺序排列（逗号分隔的仓库名）
+    repos: (process.env.GITHUB_REPOS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    excludeForks: bool(process.env.GITHUB_EXCLUDE_FORKS, true),
+    excludeArchived: bool(process.env.GITHUB_EXCLUDE_ARCHIVED, false),
+    max: int(process.env.GITHUB_MAX, 12),
+    cacheMinutes: int(process.env.GITHUB_CACHE_MINUTES, 30),
+    timeoutMs: int(process.env.GITHUB_TIMEOUT_MS, 8000),
+  },
+
   paths: {
     data: resolveDir(process.env.DATA_DIR, 'data'),
     uploads: resolveDir(process.env.UPLOAD_DIR, path.join('public', 'uploads')),

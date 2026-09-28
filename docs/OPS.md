@@ -548,3 +548,7 @@ fail2ban-client status sshd
 | 磁盘满了 | 日志或备份堆积 | `du -sh /var/log /var/backups /var/www/litesite/logs` |
 | 时间不对 | 时区未设置 | `timedatectl set-timezone Asia/Shanghai` |
 | 证书过期告警 | 自动续期没生效 | `certbot renew --dry-run` |
+| 作品集是空的 / 仍是示例数据 | GitHub 抓取失败，或用户名写错 | `curl -s http://127.0.0.1:3000/api/health`，看 `portfolio.error` |
+| 作品集显示「暂时取不到数据」 | 服务器访问不了 `api.github.com`。注意这里**不会**退回后台手动录入的数据，而是如实报错；30 分钟缓存内仍会继续用上一次抓好的数据 | `curl -s -o /dev/null -w '%{http_code}\n' https://api.github.com` |
+| push 了但线上一直没更新 | 自动部署没生效 | `systemctl status cron` · `tail /var/log/litesite-deploy.log` · `git -C /var/www/litesite status` |
+| 自动部署里 `npm ci` 被杀 | 1G 内存装依赖时触发 OOM | `free -m`，临时加 Swap，或改用手动 `/root/update.sh` |

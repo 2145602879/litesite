@@ -32,6 +32,8 @@
 - **单文件数据库**：SQLite 免去独立进程，个人站的数据量用不上连接池与并发事务
 - **自写签名 Cookie 会话**：服务端零存储，改一个密码就能踢掉全部旧会话
 - **完整交付**：从零部署文档、运维排错手册、幂等部署脚本、48 项端到端自测
+- **作品集直接由 GitHub 仓库驱动**：`.env` 里填一个用户名就能把公开仓库变成作品集，封面用仓库语言配色现场生成，不加载任何外部图片
+- **push 后 3 分钟内自动上线**：服务器用 cron 轮询远端提交号，有新提交才备份、拉取、重启，部署失败则继续跑旧版本
 
 ---
 
@@ -110,6 +112,8 @@ personal-site/
 │
 ├── deploy/
 │   ├── deploy.sh                   # 一键部署脚本（Ubuntu / Debian）
+│   ├── auto-deploy.sh              # 轮询 Git 的自动部署脚本（cron 每 3 分钟调用）
+│   ├── enable-auto-deploy.sh       # 一次性启用自动部署（写 .env + 装 cron + 自检）
 │   ├── nginx.conf                  # Nginx 反代 + 静态缓存配置模板
 │   └── proxy_params_litesite.conf  # Nginx 反代公共参数片段
 │
@@ -135,6 +139,7 @@ personal-site/
     ├── security.js                 # 安全响应头（CSP 等）
     ├── ratelimit.js                # 内存限流器（登录防爆破、留言防刷屏）
     ├── util.js                     # 字段收敛、slug 生成、摘要提取
+    ├── github.js                   # 抓取 GitHub 公开仓库 + 内存缓存 + 官方语言配色表
     ├── seed.js                     # 初始化 / 查看数据量
     ├── reset-password.js           # 忘记密码时的救援脚本
     └── routes/
@@ -150,7 +155,7 @@ personal-site/
 
 - 个人头像与简介、一句话签名、真实统计（作品数 / 文章数）
 - 技能标签，按分类分组，用细线条展示熟练度
-- 作品集：**不对称网格**（4 列宽卡与 2 列窄卡交替），图片懒加载并按显示尺寸请求
+- 作品集：数据源可直接取 **GitHub 公开仓库**（填用户名即用，不必逐条录入），按星标数、再按最近更新排序；卡片封面用仓库主语言配色现场生成，**零外部图片请求**；元信息行给出语言色点、相对更新时间、星标与归档标记；不对称网格按 4 列 / 2 列成对排布（隔行镜像），落单的最后一张铺满整行
 - 博客列表：编辑式列表而非卡片墙，点击在阅读层内打开，支持 `#/post/slug` 深链
 - 联系方式：邮箱、网站、GitHub、X、微博、微信，一键复制
 - 留言墙 + 留言表单（含字数统计、错误提示、限流提示）
@@ -163,7 +168,7 @@ personal-site/
 - 账号密码登录，bcrypt 加密存储，登录失败限流封禁
 - 主页信息：头像（可上传）、昵称、身份、签名、简介、所在地、邮箱、四个社交链接
 - 技能标签：增删改查
-- 作品集：增删改查、图片上传、标题描述链接、标签、排序、首页突出
+- 作品集：增删改查、图片上传、标题描述链接、标签、排序、首页突出（仅手动数据源时生效；切到 GitHub 数据源后列表由仓库自动生成）
 - 博客：Markdown 编辑器 + 实时预览（分栏）、草稿/发布、slug 自动生成与去重、摘要自动截取
 - 留言：查看（含邮箱与来源 IP）、显示/隐藏、删除
 - 安全：修改登录密码（改完全部旧会话立即失效）、查看上次登录与进程内存
@@ -210,6 +215,34 @@ npm start                 # 或 npm run dev（文件变更自动重启）
 curl -s http://127.0.0.1:3000/api/health
 # {"ok":true,"uptime":12,"rssMB":64.4,"heapMB":10.8}
 ```
+
+### 把作品集切到你的 GitHub（可选）
+
+默认作品集是数据库里的手动数据（也就是示例内容）。想直接展示你的 GitHub 仓库，只在 `.env` 里补一项：
+
+```bash
+# 必填：你的 GitHub 用户名。填了它，作品集数据源就变成 GitHub
+GITHUB_USERNAME=你的用户名
+
+# 可选：填了就走认证请求，接口配额从每小时 60 次提到 5000 次
+# GITHUB_TOKEN=ghp_xxxxxxxxxxxx
+```
+
+改完重启一次（`npm start` 下 Ctrl+C 再起，`npm run dev` 会自动重启），然后看健康检查里的 `portfolio` 字段：
+
+```bash
+curl -s http://127.0.0.1:3000/api/health
+# "portfolio":{"source":"github","count":3,"refreshedAt":"...","lastAttemptAt":"...","refreshing":false,"error":""}
+```
+
+`source` 是 `github` 就说明切换成功，`count` 是实际抓到的仓库数。想显式指定数据源，再加一行 `PORTFOLIO_SOURCE=github`。
+
+其余变量都有合理默认值，一般不用动：`GITHUB_MAX`（默认 12）、`GITHUB_CACHE_MINUTES`（默认 30）、
+`GITHUB_EXCLUDE_FORKS`、`GITHUB_EXCLUDE_ARCHIVED`、`GITHUB_TIMEOUT_MS`（默认 8000）。完整说明见 [.env.example](.env.example)。
+
+> **为什么建议加 `GITHUB_TOKEN`**：GitHub 的匿名接口按 IP 限流，每小时只有 60 次。
+> 项目做了 30 分钟缓存，加上抓取失败时继续用旧数据，正常访问量远远够用；
+> 只有当这台机器上还有别的程序也在打 GitHub 接口时才需要考虑。
 
 ### 跑一遍端到端自测（可选，但推荐）
 
@@ -337,6 +370,44 @@ git push
 /root/update.sh
 ```
 
+### 自动部署（可选，推荐）
+
+上面那套是「本地 push 完，再登服务器敲一条命令」。想连这一步都省掉，让服务器自己轮询仓库：
+
+```bash
+sudo -i
+cd /var/www/litesite
+git pull
+bash deploy/enable-auto-deploy.sh 你的GitHub用户名
+```
+
+之后 cron 每 3 分钟跑一次，**push 完最多 3 分钟自动上线**。
+
+每轮做的事：
+
+1. `git ls-remote` 只取远端分支的提交号（约 1 KB）与本地比对，一致就静默退出
+2. 只有真有新提交才 `git fetch`，然后备份数据库（只保留最近 10 份）
+3. `git reset --hard <远端提交号>`
+4. 仅当 `package.json` / `package-lock.json` 变了才 `npm ci --omit=dev`
+5. `pm2 reload litesite --update-env`，最后跑一次健康检查
+
+**任何一步失败都不会 reset、不会重启**，线上继续跑旧版本，所以一次失败的部署不会把站点搞挂。
+
+```bash
+# 看日志（超 1 MB 自动只留最后 2000 行）
+tail -f /var/log/litesite-deploy.log
+
+# 不想等 3 分钟，手动触发一轮
+/root/litesite-auto-deploy.sh
+
+# 临时关闭
+rm /etc/cron.d/litesite-auto-deploy
+```
+
+为什么用「服务器定时拉」而不是「GitHub Actions 推」：推模式要给 GitHub 开放入站 SSH，或者把私钥放进
+仓库 Secrets；拉模式直接复用部署时已经配好的**只读 Deploy Key**，服务器不接受任何入站连接。
+代价是更新最多延迟一个轮询周期。完整步骤见 [docs/DEPLOY.md 第 15 节](docs/DEPLOY.md)。
+
 ### 改完什么需要重启
 
 | 改动位置 | 需要做什么 |
@@ -375,9 +446,9 @@ pm2 reload litesite
 
 | 方法 | 路径 | 说明 | 鉴权 |
 | --- | --- | --- | --- |
-| GET | `/api/health` | 健康检查（含内存读数） | 否 |
+| GET | `/api/health` | 健康检查（含内存读数 + 作品集抓取状态 `portfolio`） | 否 |
 | GET | `/api/site` | 首屏数据：站点信息 + 主页信息 + 技能分组 + 统计 | 否 |
-| GET | `/api/projects` | 作品列表 | 否 |
+| GET | `/api/projects` | 作品列表，返回 `{source, total, items}` | 否 |
 | GET | `/api/posts?limit=&offset=` | 文章列表（仅已发布） | 否 |
 | GET | `/api/posts/:slug` | 文章详情（返回 Markdown 原文，浏览量 +1） | 否 |
 | GET | `/api/messages?limit=` | 留言墙（不含邮箱与 IP） | 否 |
@@ -395,6 +466,14 @@ pm2 reload litesite
 | GET/PATCH/DELETE | `/api/admin/messages[/:id]` | 留言管理 | 是 |
 | POST | `/api/admin/password` | 修改密码 | 是 |
 
+`/api/projects` 的 `source` 决定 `items` 里元素的字段：
+
+- `source: "github"`：`id`（形如 `gh:仓库名`）、`name`、`title`、`description`、`link`、`homepage`、`language`、`color`、`cover`、`stars`、`forks`、`tags`、`archived`、`updatedAt`
+- `source: "manual"`：`id`、`title`、`description`、`image`、`link`、`tags`、`featured`
+
+`/api/health` 里的 `portfolio` 是 `{source, count, refreshedAt, refreshing, error}`。
+把它放在健康检查里是有意的：抓取是否正常、什么时候刷新的、报了什么错，打开浏览器就能看到，不用登服务器翻日志。
+
 ---
 
 ## 八、设计说明（为什么长这样）
@@ -404,3 +483,5 @@ pm2 reload litesite
 - **动效**：只有三种。滚动进场（14px 位移 + 淡入，IntersectionObserver，进场即解除观察）、主题切换的颜色过渡、卡片的图片轻微放大。全部在 `prefers-reduced-motion` 下自动关闭。
 - **氛围**：一张极低透明度的 SVG 噪点纹理 + 两团柔和径向渐变，纯 CSS 实现，零额外请求，也零运行时开销。
 - **排版**：正文 16.5px/1.78，标题用 Space Grotesk，正文用 Outfit，代码用系统等宽字体栈。
+- **仓库封面为什么是算出来的**：作品集切到 GitHub 数据源后，封面不用截图、也不用占位图，而是拿仓库主语言的官方配色现场算出一条渐变（语言色的 RGB 三元组通过内联 `--cover` 交给 CSS），右下角一枚 5.5% 透明度的首字母水印，仓库名压在封面底部。这样做的理由有三个：一是零外部图片请求，1G 的机器最怕的就是带宽和解码开销；二是仓库数量随便变，都不需要提前准备图；三是语言本身就是最好的分类信号，一眼就能看出这个仓库是 Python 还是 JavaScript。语言信息刻意放在封面**下方**的元信息行（色点 + 语言名 + 相对更新时间 + 星标 + 归档标记），而不是压在封面上，保证缩略图尺寸下也读得清。
+- **整卡可点，但不嵌套链接**：作品卡用一张绝对定位的覆盖层来承载「点整卡进仓库」，而不是把整个卡片包进 `<a>`。因为卡片里还有一个「在线预览」的二级链接，嵌套 `<a>` 是无效 HTML；二级链接再用 `z-index` 抬到覆盖层之上，各点各的。
